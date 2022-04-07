@@ -2,8 +2,13 @@ package com.aboutyou.dart_packages.sign_in_with_apple
 
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.annotation.NonNull
 import androidx.browser.customtabs.CustomTabsIntent
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -12,10 +17,10 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
-import io.flutter.plugin.common.MethodChannel.Result
 import io.flutter.plugin.common.PluginRegistry.ActivityResultListener
 import io.flutter.plugin.common.PluginRegistry.Registrar
-import io.flutter.Log
+import java.net.URISyntaxException
+
 
 val TAG = "SignInWithApple"
 
@@ -89,15 +94,22 @@ public class SignInWithApplePlugin: FlutterPlugin, MethodCallHandler, ActivityAw
           _activity.startActivity(notificationIntent)
         }
 
-        val builder = CustomTabsIntent.Builder();
-        val customTabsIntent = builder.build();
-        customTabsIntent.intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY);
-        customTabsIntent.intent.data = Uri.parse(url)
-
+//        val builder = CustomTabsIntent.Builder();
+//        val customTabsIntent = builder.build();
+//        customTabsIntent.intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY);
+//        customTabsIntent.intent.data = Uri.parse(url)
+//        _activity.startActivityForResult(
+//          customTabsIntent.intent,
+//          CUSTOM_TABS_REQUEST_CODE,
+//          customTabsIntent.startAnimationBundle
+//        )
+        val wv = WebView(_activity.context)
+        wv.webViewClient = MyWebViewClient()
+        wv.settings.javaScriptEnabled = true
+        wv.loadUrl(url)
         _activity.startActivityForResult(
-          customTabsIntent.intent,
-          CUSTOM_TABS_REQUEST_CODE,
-          customTabsIntent.startAnimationBundle
+          wv,
+          CUSTOM_TABS_REQUEST_CODE
         )
       }
       else -> {
@@ -138,7 +150,40 @@ public class SignInWithApplePlugin: FlutterPlugin, MethodCallHandler, ActivityAw
 
     return false
   }
+  private class MyWebViewClient: WebViewClient() {
+
+    override fun shouldOverrideUrlLoading(view: WebView?, url: String): Boolean {
+      if (url.startsWith("intent://")) {
+        try {
+          val context = view!!.context
+          val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+          if (intent != null) {
+            view.stopLoading()
+            val packageManager = context.packageManager
+            val info = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            if (info != null) {
+              context.startActivity(intent)
+            } else {
+              val fallbackUrl = intent.getStringExtra("browser_fallback_url")
+              view.loadUrl(fallbackUrl)
+
+              // or call external broswer
+//                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl));
+//                    context.startActivity(browserIntent);
+            }
+            return true
+          }
+        } catch (e: URISyntaxException) {
+            Log.e(TAG, "Can't resolve intent://", e)
+        }
+      }
+
+      return false
+    }
+  }
+
 }
+
 
 /**
  * Activity which is used when the web-based authentication flow links back to the app
@@ -173,4 +218,5 @@ public class SignInWithAppleCallback: Activity {
 
     finish()
   }
+
 }
